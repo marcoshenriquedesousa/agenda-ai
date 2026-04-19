@@ -1,0 +1,34 @@
+{
+  "app": {
+    "autostart": true,
+    "language": "pt-BR",
+    "hotkey": "ctrl+alt+a",
+    "morning_briefing": true,
+    "morning_briefing_time": "08:00"
+  },
+  "llm": {
+    "provider": "ollama",
+    "model": "qwen2.5:7b-instruct",
+    "base_url": "http://localhost:11434",
+    "temperature": 0.1
+  },
+  "tts": {
+    "provider": "edge-tts",
+    "voice_reference": "assets/voice_reference/minha_voz.wav",
+    "edge_voice": "pt-BR-FranciscaNeural",
+    "language": "pt",
+    "speed": 1.0
+  },
+  "stt": {
+    "model": "small",
+    "language": "pt",
+    "device": "auto",
+    "input_device_id": 7,
+    "output_device_id": null,
+    "silence_threshold": 0.003
+  },
+  "notifications": {
+    "reminder_minutes_before": 15,
+    "sound": true
+  }
+}

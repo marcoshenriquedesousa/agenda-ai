@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Ambiente virtual
+venv/
+.venv/
+env/
+
+# Dados locais (banco e logs)
+data/agenda.db
+agenda_ai.log
+
+# Áudio de referência pessoal
+assets/voice_reference/*.wav
+
+# Modelos baixados (grandes, não versionar)
+assets/models/
+
+# Config local com dados pessoais (ID de microfone, etc.)
+# Manter config.json no repo como template — remover dados sensíveis antes
+# config.json
+
+# PyInstaller
+*.spec.bak
+dist/
+build/
+
+# VS Code
+.vscode/
+
+# Misc
+.DS_Store
+Thumbs.db

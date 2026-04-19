@@ -1,0 +1,31 @@
+# LLM
+ollama
+
+# STT - Speech to Text
+faster-whisper
+sounddevice
+numpy
+
+# TTS - Text to Speech (XTTS v2)
+TTS
+
+# Agenda / Database
+sqlalchemy
+
+# Scheduler & Notifications
+apscheduler
+winotify
+
+# System Tray
+pystray
+pillow
+
+# UI
+PyQt6
+
+# Hotkey global
+keyboard
+
+# Audio utils
+pyaudio
+wave
