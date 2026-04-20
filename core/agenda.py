@@ -98,6 +98,34 @@ def listar_eventos_periodo(inicio: datetime, fim: datetime) -> list[Evento]:
         )
 
 
+def deletar_eventos_periodo(inicio: datetime, fim: datetime) -> int:
+    """Remove todos os eventos do período. Retorna a quantidade deletada."""
+    with Session() as session:
+        eventos = (
+            session.query(Evento)
+            .filter(
+                Evento.data_hora >= inicio,
+                Evento.data_hora < fim,
+                Evento.concluido == False,
+            )
+            .all()
+        )
+        for e in eventos:
+            e.concluido = True
+        session.commit()
+        return len(eventos)
+
+
+def deletar_todos_lembretes() -> int:
+    """Desativa todos os lembretes ativos. Retorna a quantidade."""
+    with Session() as session:
+        lembretes = session.query(Lembrete).filter(Lembrete.ativo == True).all()
+        for l in lembretes:
+            l.ativo = False
+        session.commit()
+        return len(lembretes)
+
+
 def listar_proximos_eventos(limite: int = 10) -> list[Evento]:
     with Session() as session:
         return (

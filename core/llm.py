@@ -39,6 +39,9 @@ editar_lembrete — alterar, mudar, corrigir lembrete existente:
 listar_lembretes — quais são meus lembretes, o que preciso lembrar, minhas pendências:
 {{"acao": "listar_lembretes"}}
 
+limpar_agenda — limpar, apagar tudo, remover todos os eventos de um período ou todos os lembretes:
+{{"acao": "limpar_agenda", "periodo": "hoje|amanha|semana|mes|tudo", "alvo": "eventos|lembretes|tudo"}}
+
 corrigir_textos — corrigir ortografia, corrigir textos salvos, revisar agenda:
 {{"acao": "corrigir_textos"}}
 

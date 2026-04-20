@@ -146,6 +146,50 @@ def processar_comando(texto: str) -> str:
         lembretes = db.listar_lembretes_ativos()
         return formatar_lembretes_para_fala(lembretes)
 
+    elif acao == "limpar_agenda":
+        periodo = resultado.get("periodo", "hoje")
+        alvo = resultado.get("alvo", "eventos")
+        agora = datetime.now()
+        total = 0
+
+        if alvo in ("eventos", "tudo"):
+            if periodo == "hoje":
+                inicio = agora.replace(hour=0, minute=0, second=0, microsecond=0)
+                fim = inicio + timedelta(days=1)
+                label = "de hoje"
+            elif periodo == "amanha":
+                inicio = (agora + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+                fim = inicio + timedelta(days=1)
+                label = "de amanhã"
+            elif periodo == "semana":
+                inicio = agora.replace(hour=0, minute=0, second=0, microsecond=0)
+                fim = inicio + timedelta(days=7)
+                label = "desta semana"
+            elif periodo == "mes":
+                inicio = agora.replace(hour=0, minute=0, second=0, microsecond=0)
+                fim = inicio + timedelta(days=30)
+                label = "deste mês"
+            else:  # tudo
+                inicio = agora.replace(hour=0, minute=0, second=0, microsecond=0)
+                fim = inicio + timedelta(days=3650)
+                label = "futuros"
+
+            total += db.deletar_eventos_periodo(inicio, fim)
+
+        if alvo in ("lembretes", "tudo"):
+            total += db.deletar_todos_lembretes()
+
+        if total == 0:
+            if alvo == "lembretes":
+                return "Não havia lembretes ativos para remover."
+            return f"Não havia eventos {label} para remover."
+
+        if alvo == "lembretes":
+            return f"Removi {total} lembrete{'s' if total > 1 else ''}."
+        if alvo == "tudo":
+            return f"Limpei {total} item{'ns' if total > 1 else ''} da sua agenda e lembretes."
+        return f"Removi {total} evento{'s' if total > 1 else ''} {label}."
+
     elif acao == "corrigir_textos":
         corrigidos = 0
 
