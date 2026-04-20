@@ -136,6 +136,64 @@ def _iniciar_hotkey():
     ).start()
 
 
+def _iniciar_watcher_config():
+    """Detecta mudanças em config.json e recarrega componentes sem reiniciar."""
+    import time
+
+    try:
+        mtime_anterior = CONFIG_PATH.stat().st_mtime
+    except Exception:
+        return
+
+    hotkey_anterior = load_config()["app"].get("hotkey", "ctrl+alt+a")
+    stt_anterior = (
+        load_config()["stt"].get("model"),
+        load_config()["stt"].get("device"),
+    )
+
+    def _watch():
+        nonlocal mtime_anterior, hotkey_anterior, stt_anterior
+        while True:
+            time.sleep(2)
+            try:
+                mtime = CONFIG_PATH.stat().st_mtime
+                if mtime == mtime_anterior:
+                    continue
+
+                mtime_anterior = mtime
+                from core.config import invalidate
+                invalidate()
+
+                novo_cfg = load_config()
+
+                # recarrega TTS (sempre — pode ter mudado provedor, voz ou velocidade)
+                from core.voice_out import recarregar_engine
+                recarregar_engine()
+
+                # recarrega STT só se mudou modelo ou device
+                novo_stt = (
+                    novo_cfg["stt"].get("model"),
+                    novo_cfg["stt"].get("device"),
+                )
+                if novo_stt != stt_anterior:
+                    from core.voice_in import recarregar_modelo_stt
+                    recarregar_modelo_stt()
+                    stt_anterior = novo_stt
+
+                # re-registra hotkey se mudou
+                novo_hotkey = novo_cfg["app"].get("hotkey", "ctrl+alt+a")
+                if novo_hotkey != hotkey_anterior:
+                    from core.voice_in import atualizar_hotkey
+                    atualizar_hotkey(novo_hotkey)
+                    hotkey_anterior = novo_hotkey
+
+                print("[Config] Configurações aplicadas sem reiniciar.")
+            except Exception as e:
+                print(f"[Config] Erro no watcher: {e}")
+
+    threading.Thread(target=_watch, daemon=True).start()
+
+
 # ── Tray menu ──────────────────────────────────────────────────────────────
 
 def _on_briefing_agora(icon, item):
@@ -157,7 +215,7 @@ def _on_settings(icon, item):
     import traceback
     try:
         exe = sys.executable
-        subprocess.Popen([exe, "--settings"])
+        subprocess.Popen([exe, __file__, "--settings"])
     except Exception:
         logging.error("Erro ao abrir configurações:\n" + traceback.format_exc())
 
@@ -224,6 +282,7 @@ def main():
     iniciar_scheduler()
     _agendar_briefing_matinal()
     _iniciar_hotkey()
+    _iniciar_watcher_config()
 
     # pré-carrega Whisper em background para não travar na primeira escuta
     from core.voice_in import pre_carregar_modelo
@@ -235,8 +294,9 @@ def main():
 
     # pré-aquece Ollama para evitar reload do modelo no primeiro comando
     import ollama as _ollama
+    _ollama_client = _ollama.Client(host=config["llm"].get("base_url", "http://localhost:11434"))
     threading.Thread(
-        target=lambda: _ollama.chat(
+        target=lambda: _ollama_client.chat(
             model=config["llm"]["model"],
             messages=[{"role": "user", "content": "ok"}],
             options={"keep_alive": "30m"},

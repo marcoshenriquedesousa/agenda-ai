@@ -78,6 +78,10 @@ class SettingsWindow(QDialog):
         form = QFormLayout(w)
         form.setSpacing(10)
 
+        self.txt_nome = QLineEdit(self.config["app"].get("assistant_name", "Aria"))
+        self.txt_nome.setPlaceholderText("ex: Aria, Luna, Max...")
+        form.addRow("Nome da assistente:", self.txt_nome)
+
         self.chk_autostart = QCheckBox("Iniciar com o Windows")
         self.chk_autostart.setChecked(self.config["app"]["autostart"])
         form.addRow(self.chk_autostart)
@@ -99,6 +103,16 @@ class SettingsWindow(QDialog):
         return w
 
     # ── Aba Voz ──────────────────────────────────────────────────────────
+
+    # Vozes edge-tts PT-BR disponíveis
+    _EDGE_VOICES = [
+        ("pt-BR-FranciscaNeural", "Francisca (feminino)"),
+        ("pt-BR-AntonioNeural",   "Antonio (masculino)"),
+        ("pt-BR-ThalitaNeural",   "Thalita (feminino)"),
+        ("pt-BR-BrendaNeural",    "Brenda (feminino)"),
+        ("pt-BR-HumbertoNeural",  "Humberto (masculino)"),
+        ("pt-BR-MacerioNeural",   "Macerio (masculino)"),
+    ]
 
     def _tab_voz(self) -> QWidget:
         w = QWidget()
@@ -130,15 +144,32 @@ class SettingsWindow(QDialog):
         mic_layout.addRow("Dispositivo:", self.cmb_mic)
         layout.addWidget(grp_mic)
 
-        # referência de voz
-        grp_ref = QGroupBox("Voz de referência (XTTS v2)")
-        grp_layout = QVBoxLayout(grp_ref)
+        # provedor TTS
+        grp_tts = QGroupBox("Síntese de voz (TTS)")
+        tts_form = QFormLayout(grp_tts)
 
-        ref_path = self.config["tts"]["voice_reference"]
+        self.cmb_provider = QComboBox()
+        self.cmb_provider.addItems(["edge-tts", "pyttsx3", "xtts"])
+        self.cmb_provider.setCurrentText(self.config["tts"].get("provider", "edge-tts"))
+        tts_form.addRow("Provedor:", self.cmb_provider)
+
+        # seletor de voz edge-tts
+        self.cmb_edge_voice = QComboBox()
+        for voice_id, label in self._EDGE_VOICES:
+            self.cmb_edge_voice.addItem(label, voice_id)
+        atual_voz = self.config["tts"].get("edge_voice", "pt-BR-FranciscaNeural")
+        for idx in range(self.cmb_edge_voice.count()):
+            if self.cmb_edge_voice.itemData(idx) == atual_voz:
+                self.cmb_edge_voice.setCurrentIndex(idx)
+                break
+        self._lbl_edge_voice = QLabel("Voz (edge-tts):")
+        tts_form.addRow(self._lbl_edge_voice, self.cmb_edge_voice)
+
+        # referência de voz XTTS
+        self._lbl_ref_header = QLabel("Voz de referência (XTTS v2):")
+        ref_path = self.config["tts"].get("voice_reference", "")
         self.lbl_ref = QLabel(ref_path or "Nenhum arquivo selecionado")
         self.lbl_ref.setWordWrap(True)
-        grp_layout.addWidget(self.lbl_ref)
-
         btns_ref = QHBoxLayout()
         btn_importar = QPushButton("Importar WAV...")
         btn_importar.clicked.connect(self._importar_voz)
@@ -146,8 +177,26 @@ class SettingsWindow(QDialog):
         btn_gravar.clicked.connect(self._gravar_voz)
         btns_ref.addWidget(btn_importar)
         btns_ref.addWidget(btn_gravar)
-        grp_layout.addLayout(btns_ref)
-        layout.addWidget(grp_ref)
+        self._ref_widget = QWidget()
+        ref_inner = QVBoxLayout(self._ref_widget)
+        ref_inner.setContentsMargins(0, 0, 0, 0)
+        ref_inner.addWidget(self.lbl_ref)
+        ref_inner.addLayout(btns_ref)
+        tts_form.addRow(self._lbl_ref_header, self._ref_widget)
+
+        layout.addWidget(grp_tts)
+
+        # atualiza visibilidade conforme provedor
+        def _atualizar_campos_tts(provider: str):
+            is_edge = provider == "edge-tts"
+            is_xtts = provider == "xtts"
+            self._lbl_edge_voice.setVisible(is_edge)
+            self.cmb_edge_voice.setVisible(is_edge)
+            self._lbl_ref_header.setVisible(is_xtts)
+            self._ref_widget.setVisible(is_xtts)
+
+        self.cmb_provider.currentTextChanged.connect(_atualizar_campos_tts)
+        _atualizar_campos_tts(self.cmb_provider.currentText())
 
         # velocidade
         grp_vel = QGroupBox("Velocidade da fala")
@@ -255,21 +304,52 @@ class SettingsWindow(QDialog):
         subprocess.Popen(["python", str(script)], creationflags=subprocess.CREATE_NEW_CONSOLE)
 
     def _testar_voz(self):
+        provider = self.cmb_provider.currentText()
+        edge_voice = self.cmb_edge_voice.currentData()
+        speed = self.sld_velocidade.value() / 10
+
         def _falar():
-            from core.voice_out import falar, recarregar_engine
-            recarregar_engine()
-            falar("Olá! Estou pronto para gerenciar sua agenda.")
+            import asyncio
+            import io
+            import sounddevice as sd
+            import soundfile as sf
+
+            if provider == "edge-tts":
+                import edge_tts
+
+                rate = f"+{int((speed - 1) * 100)}%" if speed >= 1 else f"{int((speed - 1) * 100)}%"
+
+                async def _play():
+                    audio_bytes = bytearray()
+                    communicate = edge_tts.Communicate("Olá! Estou pronto para gerenciar sua agenda.", edge_voice, rate=rate)
+                    async for chunk in communicate.stream():
+                        if chunk["type"] == "audio":
+                            audio_bytes.extend(chunk["data"])
+                    if audio_bytes:
+                        data, sr = sf.read(io.BytesIO(bytes(audio_bytes)))
+                        sd.play(data, sr)
+                        sd.wait()
+
+                asyncio.run(_play())
+            else:
+                from core.voice_out import falar, recarregar_engine
+                recarregar_engine()
+                falar("Olá! Estou pronto para gerenciar sua agenda.")
+
         threading.Thread(target=_falar, daemon=True).start()
 
     def _salvar(self):
         from core.autostart import ativar, desativar
 
+        self.config["app"]["assistant_name"] = self.txt_nome.text().strip() or "Aria"
         self.config["app"]["autostart"] = self.chk_autostart.isChecked()
         self.config["app"]["morning_briefing"] = self.chk_briefing.isChecked()
         t = self.time_briefing.time()
         self.config["app"]["morning_briefing_time"] = f"{t.hour():02d}:{t.minute():02d}"
         self.config["app"]["hotkey"] = self.txt_hotkey.text().strip()
 
+        self.config["tts"]["provider"] = self.cmb_provider.currentText()
+        self.config["tts"]["edge_voice"] = self.cmb_edge_voice.currentData()
         self.config["tts"]["speed"] = self.sld_velocidade.value() / 10
 
         self.config["llm"]["model"] = self.txt_modelo.text().strip()

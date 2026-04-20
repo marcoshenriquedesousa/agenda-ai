@@ -183,20 +183,47 @@ def escutar(duracao_max: int = 15) -> str:
         return " ".join(seg.text.strip() for seg in segments).strip()
 
 
-def registrar_hotkey(callback: callable):
-    """Registra hotkey global. Roda em thread separada."""
+_hotkey_atual: str | None = None
+_hotkey_callback = None
+
+
+def registrar_hotkey(callback):
+    """Registra hotkey global. Roda em thread separada (bloqueia com keyboard.wait)."""
+    global _hotkey_atual, _hotkey_callback
     import keyboard
 
     config = get_config()
     hotkey = config["app"].get("hotkey", "ctrl+alt+a")
+    _hotkey_callback = callback
+    _hotkey_atual = hotkey
 
-    def ao_pressionar():
-        print(f"[STT] Hotkey '{hotkey}' pressionada...")
-        callback()
-
-    keyboard.add_hotkey(hotkey, ao_pressionar)
+    keyboard.add_hotkey(hotkey, callback)
     print(f"[STT] Hotkey registrada: {hotkey}")
     keyboard.wait()
+
+
+def atualizar_hotkey(novo_hotkey: str):
+    """Troca a hotkey sem reiniciar — remove a antiga e registra a nova."""
+    global _hotkey_atual
+    import keyboard
+
+    if _hotkey_atual:
+        try:
+            keyboard.remove_hotkey(_hotkey_atual)
+        except Exception:
+            pass
+
+    if _hotkey_callback and novo_hotkey:
+        keyboard.add_hotkey(novo_hotkey, _hotkey_callback)
+        _hotkey_atual = novo_hotkey
+        print(f"[STT] Hotkey atualizada: {novo_hotkey}")
+
+
+def recarregar_modelo_stt():
+    """Descarta o modelo Whisper em cache — será recarregado na próxima escuta."""
+    global _model
+    _model = None
+    print("[STT] Modelo resetado — será recarregado na próxima escuta.")
 
 
 if __name__ == "__main__":

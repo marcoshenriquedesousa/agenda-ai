@@ -3,6 +3,7 @@
     "autostart": true,
     "language": "pt-BR",
     "hotkey": "ctrl+alt+a",
+    "assistant_name": "Neferpitou",
     "morning_briefing": true,
     "morning_briefing_time": "08:00"
   },
@@ -13,8 +14,8 @@
     "temperature": 0.1
   },
   "tts": {
-    "provider": "edge-tts",
-    "voice_reference": "assets/voice_reference/minha_voz.wav",
+    "provider": "xtts",
+    "voice_reference": "assets\\voice_reference\\minha_voz.wav",
     "edge_voice": "pt-BR-FranciscaNeural",
     "language": "pt",
     "speed": 1.0
@@ -22,7 +23,7 @@
   "stt": {
     "model": "small",
     "language": "pt",
-    "device": "auto",
+    "device": "cuda",
     "input_device_id": 7,
     "output_device_id": null,
     "silence_threshold": 0.003

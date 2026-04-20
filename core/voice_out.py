@@ -3,10 +3,49 @@ import tempfile
 import threading
 import os
 
+os.environ.setdefault("COQUI_TOS_AGREED", "1")
+
+# torchaudio 2.9+ usa torchcodec que exige FFmpeg shared DLLs no Windows.
+# Patch para usar soundfile como backend de carregamento de áudio.
+def _patch_torchaudio():
+    try:
+        import torchaudio
+        import soundfile as sf
+        import torch
+        import numpy as np
+
+        def _load_via_soundfile(filepath, frame_offset=0, num_frames=-1, normalize=True, channels_first=True, format=None, backend=None):
+            data, sr = sf.read(str(filepath), dtype="float32", always_2d=True)
+            if num_frames > 0:
+                data = data[frame_offset: frame_offset + num_frames]
+            elif frame_offset > 0:
+                data = data[frame_offset:]
+            tensor = torch.from_numpy(data.T if channels_first else data)
+            return tensor, sr
+
+        torchaudio.load = _load_via_soundfile
+    except Exception:
+        pass
+
+_patch_torchaudio()
+
 from core.paths import BASE_DIR
 from core.config import get_config
 
+
+def _preimport_tts_if_needed():
+    """Importa TTS na thread principal para evitar race condition no import system."""
+    try:
+        cfg = get_config()
+        if cfg["tts"]["provider"] == "xtts":
+            from TTS.api import TTS  # noqa: carrega transformers antes das threads
+    except Exception:
+        pass
+
+_preimport_tts_if_needed()
+
 _tts_engine = None
+_tts_engine_lock = threading.Lock()
 
 # fila e thread dedicada para pyttsx3 (COM thread-safe)
 _fala_queue: queue.Queue = queue.Queue()
@@ -66,18 +105,22 @@ def _get_engine():
     if _tts_engine is not None:
         return _tts_engine
 
-    config = get_config()
-    provider = config["tts"]["provider"]
+    with _tts_engine_lock:
+        if _tts_engine is not None:  # outra thread já inicializou enquanto esperava
+            return _tts_engine
 
-    if provider == "xtts":
-        _tts_engine = _XTTSEngine(config["tts"])
-    elif provider == "pyttsx3":
-        _garantir_worker()
-        _tts_engine = "pyttsx3"  # usa a fila diretamente
-    elif provider == "edge-tts":
-        _tts_engine = _EdgeTTSEngine(config["tts"])
-    else:
-        raise ValueError(f"Provedor TTS não suportado: {provider}")
+        config = get_config()
+        provider = config["tts"]["provider"]
+
+        if provider == "xtts":
+            _tts_engine = _XTTSEngine(config["tts"])
+        elif provider == "pyttsx3":
+            _garantir_worker()
+            _tts_engine = "pyttsx3"  # usa a fila diretamente
+        elif provider == "edge-tts":
+            _tts_engine = _EdgeTTSEngine(config["tts"])
+        else:
+            raise ValueError(f"Provedor TTS não suportado: {provider}")
 
     return _tts_engine
 
@@ -129,6 +172,47 @@ class _EdgeTTSEngine:
         print("[TTS] Fala concluida")
 
 
+def _normalizar_texto(texto: str) -> str:
+    """Normalização aplicada a todos os providers — remove artefatos de pontuação."""
+    import re
+    texto = texto.strip()
+    # remove ponto(s) e espaços no final — evita "ponto" falado pelo TTS
+    texto = re.sub(r'[\s.]+$', '', texto)
+    return texto.strip()
+
+
+def _normalizar_para_xtts(texto: str) -> str:
+    """Normalização extra para XTTS v2 — lê símbolos literalmente."""
+    import re
+    texto = _normalizar_texto(texto)
+    # datas: 20/04 → "20 de 04"
+    texto = re.sub(r'\b(\d{1,2})/(\d{1,2})\b', r'\1 de \2', texto)
+    # horas: 14:00 → "14 e 00"
+    texto = re.sub(r'\b(\d{1,2}):(\d{2})\b', r'\1 e \2', texto)
+    return texto
+
+
+def _chunkar_texto(texto: str) -> list:
+    """Divide em frases curtas — XTTS v2 perde qualidade com textos longos."""
+    import re
+    partes = re.split(r'(?<=[.!?])\s+', texto.strip())
+    chunks, buffer = [], ""
+    for parte in partes:
+        parte = parte.strip()
+        if not parte:
+            continue
+        candidato = (buffer + " " + parte).strip()
+        if len(candidato) <= 180:
+            buffer = candidato
+        else:
+            if buffer:
+                chunks.append(buffer)
+            buffer = parte
+    if buffer:
+        chunks.append(buffer)
+    return chunks or [texto]
+
+
 class _XTTSEngine:
     def __init__(self, tts_config: dict):
         from TTS.api import TTS
@@ -136,6 +220,7 @@ class _XTTSEngine:
 
         self.config = tts_config
         self.language = tts_config.get("language", "pt")
+        self.speed = tts_config.get("speed", 1.0)
         self.voice_ref = BASE_DIR / tts_config.get("voice_reference", "")
         self.has_reference = self.voice_ref.exists()
 
@@ -151,38 +236,83 @@ class _XTTSEngine:
                 "[TTS] Usando voz padrão do modelo."
             )
 
+    def _prepare_reference(self) -> str:
+        """Converte a referência para mono 22050Hz num arquivo temporário se necessário."""
+        import soundfile as sf
+        import numpy as np
+
+        data, sr = sf.read(str(self.voice_ref), dtype="float32", always_2d=True)
+
+        # converte estéreo → mono
+        if data.shape[1] > 1:
+            data = data.mean(axis=1)
+        else:
+            data = data[:, 0]
+
+        # reamostrar para 22050 se necessário
+        target_sr = 22050
+        if sr != target_sr:
+            from scipy.signal import resample_poly
+            from math import gcd
+            g = gcd(sr, target_sr)
+            data = resample_poly(data, target_sr // g, sr // g).astype("float32")
+
+        tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+        sf.write(tmp.name, data, target_sr)
+        tmp.close()
+        print(f"[TTS] Referência preparada: mono {target_sr}Hz, {len(data)/target_sr:.1f}s")
+        return tmp.name
+
     def speak(self, texto: str):
         import sounddevice as sd
         import soundfile as sf
         import numpy as np
 
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-            tmp_path = tmp.name
+        texto = _normalizar_para_xtts(texto)
+        chunks = _chunkar_texto(texto)
+        ref_tmp = self._prepare_reference() if self.has_reference else None
+
+        segmentos = []
+        samplerate = 24000
+        silencio_entre = np.zeros(int(samplerate * 0.18))  # 180ms de pausa entre frases
 
         try:
-            if self.has_reference:
-                self.tts.tts_to_file(
-                    text=texto,
-                    speaker_wav=str(self.voice_ref),
-                    language=self.language,
-                    file_path=tmp_path,
-                )
-            else:
-                self.tts.tts_to_file(
-                    text=texto,
-                    language=self.language,
-                    file_path=tmp_path,
-                )
-
-            data, samplerate = sf.read(tmp_path)
-            sd.play(data, samplerate)
-            sd.wait()
+            for chunk in chunks:
+                chunk = _normalizar_para_xtts(chunk)
+                if not chunk:
+                    continue
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+                    tmp_path = tmp.name
+                try:
+                    kwargs = dict(
+                        text=chunk,
+                        language=self.language,
+                        file_path=tmp_path,
+                        speed=self.speed,
+                    )
+                    if ref_tmp:
+                        kwargs["speaker_wav"] = ref_tmp
+                    self.tts.tts_to_file(**kwargs)
+                    data, samplerate = sf.read(tmp_path)
+                    segmentos.append(data)
+                    segmentos.append(silencio_entre)
+                finally:
+                    os.unlink(tmp_path)
         finally:
-            os.unlink(tmp_path)
+            if ref_tmp:
+                os.unlink(ref_tmp)
+
+        if segmentos:
+            audio_final = np.concatenate(segmentos[:-1])  # remove silêncio final
+            sd.play(audio_final, samplerate)
+            sd.wait()
 
 
 def falar(texto: str):
     """Fala o texto usando a engine TTS configurada."""
+    texto = _normalizar_texto(texto)
+    if not texto:
+        return
     engine = _get_engine()
     if engine == "pyttsx3":
         _fala_queue.put(texto)
