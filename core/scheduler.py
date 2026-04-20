@@ -15,7 +15,8 @@ def _notificar(evento_id: int, titulo: str, hora_str: str):
     from core.voice_out import falar
 
     config = get_config()
-    minutos = config["notifications"]["reminder_minutes_before"]
+    notif = config["notifications"]
+    minutos = notif.get("evento_antecedencia_minutos", notif.get("reminder_minutes_before", 15))
 
     texto = f"Lembrete: {titulo} em {minutos} minutos, às {hora_str}."
     print(f"[Scheduler] {texto}")
@@ -47,7 +48,8 @@ def _verificar_eventos():
     from core.agenda import listar_proximos_eventos
 
     config = get_config()
-    antecedencia = config["notifications"]["reminder_minutes_before"]
+    notif = config["notifications"]
+    antecedencia = notif.get("evento_antecedencia_minutos", notif.get("reminder_minutes_before", 15))
 
     eventos = listar_proximos_eventos(limite=20)
     agora = datetime.now()
@@ -106,9 +108,11 @@ def _verificar_lembretes():
     lembretes = listar_lembretes_ativos()
     agora = datetime.now()
 
+    config = get_config()
+    intervalo_h = config["notifications"].get("lembrete_intervalo_horas", 3)
+
     for lembrete in lembretes:
-        # só notifica se nunca foi notificado ou se faz mais de 3h desde a última vez
-        if lembrete.ultima_notificacao is None or (agora - lembrete.ultima_notificacao) >= timedelta(hours=3):
+        if lembrete.ultima_notificacao is None or (agora - lembrete.ultima_notificacao) >= timedelta(hours=intervalo_h):
             _scheduler.add_job(
                 _notificar_lembrete,
                 trigger=DateTrigger(run_date=agora),
@@ -136,8 +140,10 @@ def iniciar():
     # verifica eventos a cada minuto
     _scheduler.add_job(_verificar_eventos, "interval", minutes=1, id="verificar_eventos")
 
-    # anuncia lembretes recorrentes a cada 3 horas
-    _scheduler.add_job(_verificar_lembretes, "interval", hours=3, id="verificar_lembretes")
+    # anuncia lembretes recorrentes usando o intervalo configurado
+    cfg_notif = get_config()["notifications"]
+    intervalo_h = cfg_notif.get("lembrete_intervalo_horas", 3)
+    _scheduler.add_job(_verificar_lembretes, "interval", hours=intervalo_h, id="verificar_lembretes")
 
     # reseta notificados à meia-noite
     _scheduler.add_job(_resetar_notificados, "cron", hour=0, minute=0, id="reset_notificados")
@@ -159,7 +165,8 @@ def agendar_notificacao_imediata(evento_id: int, titulo: str, hora_str: str):
         return
 
     config = get_config()
-    antecedencia = config["notifications"]["reminder_minutes_before"]
+    notif = config["notifications"]
+    antecedencia = notif.get("evento_antecedencia_minutos", notif.get("reminder_minutes_before", 15))
 
     from core.agenda import listar_proximos_eventos
     for e in listar_proximos_eventos(limite=50):

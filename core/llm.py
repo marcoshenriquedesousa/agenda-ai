@@ -14,8 +14,8 @@ Responda com um JSON usando um destes formatos:
 criar_evento — marcar, anotar, agendar (com data/hora específica):
 {{"acao": "criar_evento", "titulo": "...", "data_hora": "YYYY-MM-DD HH:MM", "descricao": "...", "lembrete_minutos": 15}}
 
-consultar_eventos — o que tenho hoje/amanhã/semana:
-{{"acao": "consultar_eventos", "periodo": "hoje"}}
+consultar_eventos — o que tenho hoje/amanhã/semana/mês/próximos:
+{{"acao": "consultar_eventos", "periodo": "hoje|amanha|semana|mes|proximos"}}
 
 deletar_evento — excluir, deletar, remover, cancelar evento específico:
 {{"acao": "deletar_evento", "titulo": "..."}}
@@ -35,12 +35,16 @@ editar_lembrete — alterar, mudar, corrigir lembrete existente:
 listar_lembretes — quais são meus lembretes, o que preciso lembrar, minhas pendências:
 {{"acao": "listar_lembretes"}}
 
+corrigir_textos — corrigir ortografia, corrigir textos salvos, revisar agenda:
+{{"acao": "corrigir_textos"}}
+
 nao_entendido — fora do escopo de agenda:
 {{"acao": "nao_entendido", "mensagem": "resposta curta em português"}}
 
 Regras: datas relativas → YYYY-MM-DD; sem data → hoje se hora não passou, senão amanhã; "manhã"=09:00, "tarde"=14:00, "noite"=19:00.
 Diferença entre criar_evento e criar_lembrete: evento tem data/hora específica (reunião às 14h). Lembrete é recorrente/sem horário fixo (pagar boleto, tomar remédio).
-Para editar/deletar: use titulo_atual/texto_atual para identificar o item — não precisa ser exato, apenas palavras-chave suficientes."""
+Para editar/deletar: use titulo_atual/texto_atual para identificar o item — não precisa ser exato, apenas palavras-chave suficientes.
+Capitalize o titulo e o texto corretamente ao salvar (ex: "reunião com João", "Pagar boleto")."""
 
 
 def _montar_prompt() -> str:
@@ -109,6 +113,69 @@ def responder_livremente(texto: str) -> str:
         ],
     )
     return resposta["message"]["content"].strip()
+
+
+_PROMPT_CORRIGIR_STT = """Você é um corretor de reconhecimento de voz em português brasileiro.
+O texto foi gerado por um sistema de transcrição automática (STT) e pode conter erros fonéticos — palavras que soam parecido mas estão erradas.
+
+Corrija APENAS erros claros de transcrição ou ortografia. Não altere o sentido, não adicione palavras, não resuma.
+Retorne SOMENTE o texto corrigido, sem explicações, sem aspas, sem pontuação extra.
+
+Exemplos de correções esperadas:
+- "autopedista" → "ortopedista"
+- "cardiologista amanha" → "cardiologista amanhã"
+- "reuniao com o joao" → "reunião com o João"
+- "paga o boleto do cartao" → "pagar o boleto do cartão"
+- "consulta no otorrino" → "consulta no otorrinolaringologista" (só se fizer sentido contextual)
+- "anota dentista sexta de manha" → "anota dentista sexta de manhã"
+
+Se o texto já estiver correto, retorne-o exatamente como está."""
+
+
+def corrigir_transcricao(texto: str) -> str:
+    """Corrige erros fonéticos de STT antes de interpretar o comando."""
+    cfg = get_config()
+    try:
+        resposta = _cliente().chat(
+            model=cfg["llm"]["model"],
+            options={"temperature": 0.0, "keep_alive": "30m"},
+            messages=[
+                {"role": "system", "content": _PROMPT_CORRIGIR_STT},
+                {"role": "user", "content": texto},
+            ],
+        )
+        corrigido = resposta["message"]["content"].strip().strip('"').strip("'")
+        if corrigido and corrigido != texto:
+            print(f"[STT-Fix] '{texto}' → '{corrigido}'")
+        return corrigido if corrigido else texto
+    except Exception as e:
+        print(f"[STT-Fix] Erro na correção: {e}")
+        return texto
+
+
+def corrigir_texto(texto: str) -> str:
+    """Corrige ortografia e normaliza um texto já salvo no banco."""
+    cfg = get_config()
+    resposta = _cliente().chat(
+        model=cfg["llm"]["model"],
+        options={"temperature": 0.0, "keep_alive": "30m"},
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "Você é um corretor ortográfico. Recebe um texto curto em português "
+                    "que pode ter erros de digitação, fala ou falta de acentuação. "
+                    "Retorne APENAS o texto corrigido, sem explicações, sem aspas, sem pontuação extra. "
+                    "Capitalize corretamente. Exemplos: "
+                    "'reuniao com joao' → 'Reunião com João'; "
+                    "'paga boleto cartao' → 'Pagar boleto do cartão'."
+                ),
+            },
+            {"role": "user", "content": texto},
+        ],
+    )
+    corrigido = resposta["message"]["content"].strip().strip('"').strip("'")
+    return corrigido if corrigido else texto
 
 
 def formatar_agenda_para_fala(eventos: list) -> str:

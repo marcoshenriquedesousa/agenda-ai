@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from core.voice_in import escutar
 from core.voice_out import falar
-from core.llm import interpretar_comando, formatar_agenda_para_fala, formatar_lembretes_para_fala, responder_livremente
+from core.llm import interpretar_comando, formatar_agenda_para_fala, formatar_lembretes_para_fala, responder_livremente, corrigir_texto, corrigir_transcricao
 from core import agenda as db
 
 
@@ -10,6 +10,7 @@ def processar_comando(texto: str) -> str:
     if not texto.strip():
         return "Não ouvi nada. Tente novamente."
 
+    texto = corrigir_transcricao(texto)
     resultado = interpretar_comando(texto)
     acao = resultado.get("acao")
 
@@ -38,12 +39,31 @@ def processar_comando(texto: str) -> str:
 
     elif acao == "consultar_eventos":
         periodo = resultado.get("periodo", "hoje")
-        if periodo == "hoje":
-            eventos = db.listar_eventos_hoje()
-            return formatar_agenda_para_fala(eventos)
+        agora = datetime.now()
+
+        if periodo == "amanha":
+            eventos = db.listar_eventos_amanha()
+            prefixo = "Amanhã"
+        elif periodo == "semana":
+            inicio = agora.replace(hour=0, minute=0, second=0, microsecond=0)
+            fim = inicio + timedelta(days=7)
+            eventos = db.listar_eventos_periodo(inicio, fim)
+            prefixo = "Esta semana"
+        elif periodo == "mes":
+            inicio = agora.replace(hour=0, minute=0, second=0, microsecond=0)
+            fim = inicio + timedelta(days=30)
+            eventos = db.listar_eventos_periodo(inicio, fim)
+            prefixo = "Nos próximos 30 dias"
+        elif periodo == "proximos":
+            eventos = db.listar_proximos_eventos(limite=10)
+            prefixo = "Próximos eventos"
         else:
-            eventos = db.listar_proximos_eventos(limite=5)
-            return formatar_agenda_para_fala(eventos)
+            eventos = db.listar_eventos_hoje()
+            prefixo = "Hoje"
+
+        if not eventos:
+            return f"{prefixo} você não tem nenhum compromisso agendado."
+        return formatar_agenda_para_fala(eventos)
 
     elif acao in ("cancelar_evento", "deletar_evento"):
         titulo_busca = resultado.get("titulo", "").strip()
@@ -125,6 +145,28 @@ def processar_comando(texto: str) -> str:
     elif acao == "listar_lembretes":
         lembretes = db.listar_lembretes_ativos()
         return formatar_lembretes_para_fala(lembretes)
+
+    elif acao == "corrigir_textos":
+        corrigidos = 0
+
+        eventos = db.listar_proximos_eventos(limite=50)
+        for evento in eventos:
+            titulo_novo = corrigir_texto(evento.titulo)
+            descricao_nova = corrigir_texto(evento.descricao) if evento.descricao else None
+            if titulo_novo != evento.titulo or descricao_nova != evento.descricao:
+                db.editar_evento(evento.id, titulo=titulo_novo, descricao=descricao_nova)
+                corrigidos += 1
+
+        lembretes = db.listar_lembretes_ativos()
+        for lembrete in lembretes:
+            texto_novo = corrigir_texto(lembrete.texto)
+            if texto_novo != lembrete.texto:
+                db.editar_lembrete(lembrete.id, texto=texto_novo)
+                corrigidos += 1
+
+        if corrigidos == 0:
+            return "Todos os textos já estão corretos, não precisei alterar nada."
+        return f"Corrigi {corrigidos} item{'ns' if corrigidos > 1 else ''}. Sua agenda está organizada."
 
     elif acao == "nao_entendido":
         return responder_livremente(texto)

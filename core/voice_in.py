@@ -82,13 +82,11 @@ def _capturar_com_vad(max_duracao: int = 15) -> np.ndarray:
     threshold = config.get("silence_threshold", 0.003)
 
     silero = _get_silero()
-    # com Silero: 0.7s de silêncio basta; sem ele mantém 1.5s para segurança
-    silencio_segundos = 0.7 if silero else 1.5
+    # pausa_segundos configurável — padrão 1.5s dá tempo para pausas naturais na fala
+    pausa_cfg = config.get("silence_pause_seconds", 1.5)
+    silencio_segundos = pausa_cfg
 
     audio_q: queue.Queue = queue.Queue()
-
-    def callback(indata, frames, time, status):
-        audio_q.put(indata.copy())
 
     chunks = []
     voz_detectada = False
@@ -97,10 +95,27 @@ def _capturar_com_vad(max_duracao: int = 15) -> np.ndarray:
     max_chunks = int(max_duracao * SAMPLE_RATE / BLOCK_SIZE)
     min_chunks_voz = int(0.3 * SAMPLE_RATE / BLOCK_SIZE)
 
+    def callback(indata, frames, time, status):
+        mono = indata[:, 0] if indata.ndim > 1 else indata.flatten()
+        audio_q.put(mono.reshape(-1, 1).copy())
+
+    # descobre o número de canais suportado abrindo e fechando rapidamente
+    canais = 1
+    for ch in [1, 2]:
+        try:
+            t = sd.InputStream(device=device_id, samplerate=SAMPLE_RATE, channels=ch, blocksize=BLOCK_SIZE)
+            t.start()
+            t.stop()
+            t.close()
+            canais = ch
+            break
+        except Exception:
+            continue
+
     with sd.InputStream(
         device=device_id,
         samplerate=SAMPLE_RATE,
-        channels=1,
+        channels=canais,
         blocksize=BLOCK_SIZE,
         callback=callback,
     ):

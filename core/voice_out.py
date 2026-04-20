@@ -150,11 +150,11 @@ class _EdgeTTSEngine:
         import edge_tts
         import sounddevice as sd
         import soundfile as sf
-        import io
+        import tempfile
+        import numpy as np
 
         rate = f"+{int((self.speed - 1) * 100)}%" if self.speed >= 1 else f"{int((self.speed - 1) * 100)}%"
 
-        # coleta chunks via stream (primeiro chunk chega em ~200-400ms)
         audio_bytes = bytearray()
         communicate = edge_tts.Communicate(texto, self.voice, rate=rate)
         async for chunk in communicate.stream():
@@ -162,12 +162,42 @@ class _EdgeTTSEngine:
                 audio_bytes.extend(chunk["data"])
 
         if not audio_bytes:
+            print("[TTS] edge-tts não retornou áudio.")
             return
 
-        # decodifica e toca em memória — sem arquivo temporário
-        data, sr = sf.read(io.BytesIO(bytes(audio_bytes)))
-        print(f"[TTS] Reproduzindo no dispositivo padrao...")
-        sd.play(data, sr, device=self.output_device)
+        # salva em arquivo temporário — soundfile lê MP3 via libsndfile 1.1+
+        # ou via arquivo físico com extensão correta
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
+            tmp.write(bytes(audio_bytes))
+            tmp_path = tmp.name
+
+        try:
+            data, sr = sf.read(tmp_path)
+        except Exception as e:
+            print(f"[TTS] soundfile falhou ao decodificar MP3: {e}. Tentando via torchaudio...")
+            try:
+                import torchaudio
+                import io as _io
+                # usa o backend original do torchaudio (não o patchado)
+                waveform, sr = torchaudio.load(tmp_path)
+                data = waveform.squeeze().numpy()
+                if data.ndim > 1:
+                    data = data.mean(axis=0)
+            except Exception as e2:
+                print(f"[TTS] Falha total ao decodificar áudio edge-tts: {e2}")
+                os.unlink(tmp_path)
+                return
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+
+        if data.ndim > 1:
+            data = data.mean(axis=1)
+
+        print(f"[TTS] Reproduzindo edge-tts...")
+        sd.play(data.astype(np.float32), sr, device=self.output_device)
         sd.wait()
         print("[TTS] Fala concluida")
 
@@ -189,6 +219,12 @@ def _normalizar_para_xtts(texto: str) -> str:
     texto = re.sub(r'\b(\d{1,2})/(\d{1,2})\b', r'\1 de \2', texto)
     # horas: 14:00 → "14 e 00"
     texto = re.sub(r'\b(\d{1,2}):(\d{2})\b', r'\1 e \2', texto)
+    # remove pontos que não sejam decimais (ex: "Neferpitou. Você" → "Neferpitou Você")
+    texto = re.sub(r'(?<!\d)\.(?!\d)', ' ', texto)
+    # remove ! e ? para evitar "exclamação"/"interrogação" falados pelo modelo
+    texto = re.sub(r'[!?]+', ' ', texto)
+    # colapsa múltiplos espaços
+    texto = re.sub(r' {2,}', ' ', texto).strip()
     return texto
 
 

@@ -4,6 +4,7 @@
     "language": "pt-BR",
     "hotkey": "ctrl+alt+a",
     "assistant_name": "Neferpitou",
+    "startup_briefing": true,
     "morning_briefing": true,
     "morning_briefing_time": "08:00"
   },
@@ -24,12 +25,14 @@
     "model": "small",
     "language": "pt",
     "device": "cuda",
-    "input_device_id": 7,
+    "input_device_id": 0,
     "output_device_id": null,
-    "silence_threshold": 0.003
+    "silence_threshold": 0.003,
+    "silence_pause_seconds": 1.5
   },
   "notifications": {
-    "reminder_minutes_before": 15,
-    "sound": true
+    "sound": true,
+    "evento_antecedencia_minutos": 15,
+    "lembrete_intervalo_horas": 3
   }
 }

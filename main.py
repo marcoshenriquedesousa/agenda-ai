@@ -293,24 +293,31 @@ def main():
     from core.voice_out import _get_engine
     threading.Thread(target=_get_engine, daemon=True).start()
 
-    # pré-aquece Ollama para evitar reload do modelo no primeiro comando
+    # pré-aquece Ollama com retry para aguardar o serviço subir junto com o Windows
     import ollama as _ollama
-    _ollama_client = _ollama.Client(host=config["llm"].get("base_url", "http://localhost:11434"))
-    threading.Thread(
-        target=lambda: _ollama_client.chat(
-            model=config["llm"]["model"],
-            messages=[{"role": "user", "content": "ok"}],
-            options={"keep_alive": "30m"},
-        ),
-        daemon=True,
-    ).start()
 
-    # briefing imediato se for o horário certo (±5 min)
-    agora = datetime.now()
-    horario = config["app"].get("morning_briefing_time", "08:00")
-    hora, minuto = map(int, horario.split(":"))
-    diff = abs((agora.hour * 60 + agora.minute) - (hora * 60 + minuto))
-    if config["app"].get("morning_briefing") and diff <= 5:
+    def _preaquecer_ollama():
+        import time
+        client = _ollama.Client(host=config["llm"].get("base_url", "http://localhost:11434"))
+        model = config["llm"]["model"]
+        for tentativa in range(10):
+            try:
+                client.chat(
+                    model=model,
+                    messages=[{"role": "user", "content": "ok"}],
+                    options={"keep_alive": "30m"},
+                )
+                print("[Ollama] Pré-aquecimento concluído.")
+                return
+            except Exception as e:
+                print(f"[Ollama] Aguardando serviço iniciar... tentativa {tentativa + 1}/10 ({e})")
+                time.sleep(6)
+        print("[Ollama] Serviço não disponível após aguardar. Continuando sem pré-aquecimento.")
+
+    threading.Thread(target=_preaquecer_ollama, daemon=True).start()
+
+    # briefing de inicialização — fala agenda e lembretes sempre que o sistema sobe
+    if config["app"].get("startup_briefing", True):
         threading.Thread(target=_fazer_briefing, daemon=True).start()
 
     # lança botão flutuante como subprocesso independente

@@ -142,6 +142,17 @@ class SettingsWindow(QDialog):
                 break
 
         mic_layout.addRow("Dispositivo:", self.cmb_mic)
+
+        self.cmb_pausa = QComboBox()
+        opcoes_pausa = [("Rápida (1,0s)", 1.0), ("Normal (1,5s)", 1.5), ("Lenta (2,0s)", 2.0), ("Muito lenta (2,5s)", 2.5)]
+        for label, val in opcoes_pausa:
+            self.cmb_pausa.addItem(label, val)
+        atual_pausa = self.config["stt"].get("silence_pause_seconds", 1.5)
+        for idx in range(self.cmb_pausa.count()):
+            if self.cmb_pausa.itemData(idx) == atual_pausa:
+                self.cmb_pausa.setCurrentIndex(idx)
+                break
+        mic_layout.addRow("Pausa antes de cortar:", self.cmb_pausa)
         layout.addWidget(grp_mic)
 
         # provedor TTS
@@ -267,22 +278,46 @@ class SettingsWindow(QDialog):
 
     def _tab_agenda(self) -> QWidget:
         w = QWidget()
-        form = QFormLayout(w)
-        form.setSpacing(10)
+        layout = QVBoxLayout(w)
+        layout.setSpacing(10)
 
-        self.cmb_lembrete = QComboBox()
-        opcoes = [5, 10, 15, 30, 60]
-        for o in opcoes:
-            self.cmb_lembrete.addItem(f"{o} minutos antes", o)
-        atual = self.config["notifications"]["reminder_minutes_before"]
-        idx = opcoes.index(atual) if atual in opcoes else 2
-        self.cmb_lembrete.setCurrentIndex(idx)
-        form.addRow("Lembrete antecipado:", self.cmb_lembrete)
+        notif = self.config["notifications"]
 
-        self.chk_som = QCheckBox("Som na notificação")
-        self.chk_som.setChecked(self.config["notifications"]["sound"])
-        form.addRow(self.chk_som)
+        # Eventos com horário fixo
+        grp_eventos = QGroupBox("Eventos (com data e hora)")
+        form_eventos = QFormLayout(grp_eventos)
 
+        self.cmb_antecedencia = QComboBox()
+        opcoes_min = [5, 10, 15, 30, 60]
+        for o in opcoes_min:
+            self.cmb_antecedencia.addItem(f"{o} minutos antes", o)
+        atual_min = notif.get("evento_antecedencia_minutos", notif.get("reminder_minutes_before", 15))
+        idx = opcoes_min.index(atual_min) if atual_min in opcoes_min else 2
+        self.cmb_antecedencia.setCurrentIndex(idx)
+        form_eventos.addRow("Notificar com antecedência:", self.cmb_antecedencia)
+        layout.addWidget(grp_eventos)
+
+        # Lembretes recorrentes
+        grp_lembretes = QGroupBox("Lembretes recorrentes (sem horário fixo)")
+        form_lembretes = QFormLayout(grp_lembretes)
+
+        self.cmb_intervalo = QComboBox()
+        opcoes_h = [1, 2, 3, 6, 12, 24]
+        for o in opcoes_h:
+            label = f"A cada {o} hora" if o == 1 else f"A cada {o} horas"
+            self.cmb_intervalo.addItem(label, o)
+        atual_h = notif.get("lembrete_intervalo_horas", 3)
+        idx_h = opcoes_h.index(atual_h) if atual_h in opcoes_h else 2
+        self.cmb_intervalo.setCurrentIndex(idx_h)
+        form_lembretes.addRow("Repetir lembrete:", self.cmb_intervalo)
+        layout.addWidget(grp_lembretes)
+
+        # Som (vale para os dois)
+        self.chk_som = QCheckBox("Som na notificação (eventos e lembretes)")
+        self.chk_som.setChecked(notif.get("sound", True))
+        layout.addWidget(self.chk_som)
+
+        layout.addStretch()
         return w
 
     # ── Ações ────────────────────────────────────────────────────────────
@@ -358,9 +393,13 @@ class SettingsWindow(QDialog):
         self.config["stt"]["model"] = self.cmb_stt.currentText()
         self.config["stt"]["device"] = self.cmb_device.currentText()
         self.config["stt"]["input_device_id"] = self.cmb_mic.currentData()
+        self.config["stt"]["silence_pause_seconds"] = self.cmb_pausa.currentData()
 
-        self.config["notifications"]["reminder_minutes_before"] = self.cmb_lembrete.currentData()
+        self.config["notifications"]["evento_antecedencia_minutos"] = self.cmb_antecedencia.currentData()
+        self.config["notifications"]["lembrete_intervalo_horas"] = self.cmb_intervalo.currentData()
         self.config["notifications"]["sound"] = self.chk_som.isChecked()
+        # remove chave antiga se existir
+        self.config["notifications"].pop("reminder_minutes_before", None)
 
         _save_config(self.config)
 

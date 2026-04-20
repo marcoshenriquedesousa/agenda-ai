@@ -68,6 +68,36 @@ def listar_eventos_hoje() -> list[Evento]:
         )
 
 
+def listar_eventos_amanha() -> list[Evento]:
+    from datetime import timedelta
+    amanha = (datetime.now() + timedelta(days=1)).date()
+    with Session() as session:
+        return (
+            session.query(Evento)
+            .filter(
+                Evento.data_hora >= datetime(amanha.year, amanha.month, amanha.day),
+                Evento.data_hora < datetime(amanha.year, amanha.month, amanha.day + 1),
+                Evento.concluido == False,
+            )
+            .order_by(Evento.data_hora)
+            .all()
+        )
+
+
+def listar_eventos_periodo(inicio: datetime, fim: datetime) -> list[Evento]:
+    with Session() as session:
+        return (
+            session.query(Evento)
+            .filter(
+                Evento.data_hora >= inicio,
+                Evento.data_hora < fim,
+                Evento.concluido == False,
+            )
+            .order_by(Evento.data_hora)
+            .all()
+        )
+
+
 def listar_proximos_eventos(limite: int = 10) -> list[Evento]:
     with Session() as session:
         return (
