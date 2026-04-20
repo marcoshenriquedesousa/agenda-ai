@@ -7,7 +7,11 @@ import ollama
 from core.config import get_config
 
 
-SYSTEM_PROMPT = """Você é {nome}, um assistente de agenda pessoal. Hoje é {hoje}, hora atual {hora}.
+SYSTEM_PROMPT = """Você é {nome}, um assistente de agenda pessoal.
+Hoje é {hoje}, hora atual {hora}.
+
+Calendário desta semana e próxima para referência:
+{calendario}
 
 Responda com um JSON usando um destes formatos:
 
@@ -41,19 +45,59 @@ corrigir_textos — corrigir ortografia, corrigir textos salvos, revisar agenda:
 nao_entendido — fora do escopo de agenda:
 {{"acao": "nao_entendido", "mensagem": "resposta curta em português"}}
 
-Regras: datas relativas → YYYY-MM-DD; sem data → hoje se hora não passou, senão amanhã; "manhã"=09:00, "tarde"=14:00, "noite"=19:00.
+Regras de data:
+- Use SEMPRE as datas do calendário acima para resolver dias da semana ("sexta", "segunda", etc.)
+- "amanhã" = dia seguinte ao hoje
+- Sem data mencionada: use hoje se a hora ainda não passou, senão amanhã
+
+Regras de hora — PRIORIDADE ESTRITA:
+1. Hora explícita ("8h", "oito horas", "08:00", "8 da manhã") → use EXATAMENTE essa hora (08:00)
+2. Só use os padrões abaixo quando NENHUMA hora for mencionada:
+   - "manhã" sem hora = 09:00
+   - "tarde" sem hora = 14:00
+   - "noite" sem hora = 19:00
+   - sem hora e sem período = 09:00
+
 Diferença entre criar_evento e criar_lembrete: evento tem data/hora específica (reunião às 14h). Lembrete é recorrente/sem horário fixo (pagar boleto, tomar remédio).
 Para editar/deletar: use titulo_atual/texto_atual para identificar o item — não precisa ser exato, apenas palavras-chave suficientes.
-Capitalize o titulo e o texto corretamente ao salvar (ex: "reunião com João", "Pagar boleto")."""
+Capitalize o titulo e o texto corretamente ao salvar (ex: "Reunião com João", "Pagar boleto")."""
+
+
+_DIAS_PT = {
+    0: "segunda-feira",
+    1: "terça-feira",
+    2: "quarta-feira",
+    3: "quinta-feira",
+    4: "sexta-feira",
+    5: "sábado",
+    6: "domingo",
+}
 
 
 def _montar_prompt() -> str:
+    from datetime import timedelta
     agora = datetime.now()
     nome = get_config()["app"].get("assistant_name", "Aria")
+
+    # gera calendário dos próximos 14 dias com nome do dia
+    linhas = []
+    for i in range(14):
+        dia = agora.date() + timedelta(days=i)
+        nome_dia = _DIAS_PT[dia.weekday()]
+        if i == 0:
+            rotulo = f"hoje ({nome_dia})"
+        elif i == 1:
+            rotulo = f"amanhã ({nome_dia})"
+        else:
+            rotulo = nome_dia
+        linhas.append(f"  {rotulo}: {dia.strftime('%Y-%m-%d')}")
+    calendario = "\n".join(linhas)
+
     return SYSTEM_PROMPT.format(
         nome=nome,
         hoje=agora.strftime("%Y-%m-%d (%A)"),
         hora=agora.strftime("%H:%M"),
+        calendario=calendario,
     )
 
 
