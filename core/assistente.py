@@ -44,26 +44,46 @@ def processar_comando(texto: str) -> str:
         if periodo == "amanha":
             eventos = db.listar_eventos_amanha()
             prefixo = "Amanhã"
+            incluir_data = False
         elif periodo == "semana":
             inicio = agora.replace(hour=0, minute=0, second=0, microsecond=0)
             fim = inicio + timedelta(days=7)
             eventos = db.listar_eventos_periodo(inicio, fim)
             prefixo = "Esta semana"
+            incluir_data = True
         elif periodo == "mes":
             inicio = agora.replace(hour=0, minute=0, second=0, microsecond=0)
             fim = inicio + timedelta(days=30)
             eventos = db.listar_eventos_periodo(inicio, fim)
             prefixo = "Nos próximos 30 dias"
+            incluir_data = True
         elif periodo == "proximos":
             eventos = db.listar_proximos_eventos(limite=10)
             prefixo = "Próximos eventos"
+            incluir_data = True
+        elif len(periodo) == 10 and periodo[4] == "-":
+            # data específica no formato YYYY-MM-DD
+            try:
+                dia = datetime.strptime(periodo, "%Y-%m-%d")
+                inicio = dia.replace(hour=0, minute=0, second=0, microsecond=0)
+                fim = inicio + timedelta(days=1)
+                eventos = db.listar_eventos_periodo(inicio, fim)
+                nome_dia = ["segunda-feira", "terça-feira", "quarta-feira",
+                            "quinta-feira", "sexta-feira", "sábado", "domingo"][dia.weekday()]
+                prefixo = f"Na {nome_dia}, dia {dia.strftime('%d/%m')}"
+                incluir_data = False
+            except ValueError:
+                eventos = db.listar_eventos_hoje()
+                prefixo = "Hoje"
+                incluir_data = False
         else:
             eventos = db.listar_eventos_hoje()
             prefixo = "Hoje"
+            incluir_data = False
 
         if not eventos:
             return f"{prefixo} você não tem nenhum compromisso agendado."
-        return formatar_agenda_para_fala(eventos)
+        return formatar_agenda_para_fala(eventos, incluir_data=incluir_data)
 
     elif acao in ("cancelar_evento", "deletar_evento"):
         titulo_busca = resultado.get("titulo", "").strip()

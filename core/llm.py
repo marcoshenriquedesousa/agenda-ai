@@ -18,8 +18,9 @@ Responda com um JSON usando um destes formatos:
 criar_evento — marcar, anotar, agendar (com data/hora específica):
 {{"acao": "criar_evento", "titulo": "...", "data_hora": "YYYY-MM-DD HH:MM", "descricao": "...", "lembrete_minutos": 15}}
 
-consultar_eventos — o que tenho hoje/amanhã/semana/mês/próximos:
-{{"acao": "consultar_eventos", "periodo": "hoje|amanha|semana|mes|proximos"}}
+consultar_eventos — o que tenho hoje/amanhã/semana/mês/próximos/dia específico:
+{{"acao": "consultar_eventos", "periodo": "hoje|amanha|semana|mes|proximos|YYYY-MM-DD"}}
+Quando o usuário mencionar um dia da semana ("sexta", "segunda", etc.), use a data exata do calendário acima como valor de periodo (ex: "periodo": "2026-04-24").
 
 deletar_evento — excluir, deletar, remover, cancelar evento específico:
 {{"acao": "deletar_evento", "titulo": "..."}}
@@ -225,7 +226,25 @@ def corrigir_texto(texto: str) -> str:
     return corrigido if corrigido else texto
 
 
-def formatar_agenda_para_fala(eventos: list) -> str:
+_DIAS_FALA = ["segunda-feira", "terça-feira", "quarta-feira",
+              "quinta-feira", "sexta-feira", "sábado", "domingo"]
+
+
+def _formatar_data_fala(dt: datetime) -> str:
+    """Retorna data legível para TTS: 'sexta-feira, dia 24 de abril'."""
+    hoje = datetime.now().date()
+    amanha = hoje + __import__("datetime").timedelta(days=1)
+    if dt.date() == hoje:
+        return "hoje"
+    if dt.date() == amanha:
+        return "amanhã"
+    meses = ["janeiro", "fevereiro", "março", "abril", "maio", "junho",
+             "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"]
+    nome_dia = _DIAS_FALA[dt.weekday()]
+    return f"{nome_dia}, dia {dt.day} de {meses[dt.month - 1]}"
+
+
+def formatar_agenda_para_fala(eventos: list, incluir_data: bool = False) -> str:
     """Converte lista de eventos em texto natural para o TTS falar."""
     if not eventos:
         return "Você não tem compromissos agendados."
@@ -233,12 +252,19 @@ def formatar_agenda_para_fala(eventos: list) -> str:
     if len(eventos) == 1:
         e = eventos[0]
         hora = e.data_hora.strftime("%H:%M")
+        if incluir_data:
+            data = _formatar_data_fala(e.data_hora)
+            return f"Você tem um compromisso: {e.titulo}, {data} às {hora}."
         return f"Você tem um compromisso: {e.titulo} às {hora}."
 
     partes = []
     for e in eventos:
         hora = e.data_hora.strftime("%H:%M")
-        partes.append(f"{e.titulo} às {hora}")
+        if incluir_data:
+            data = _formatar_data_fala(e.data_hora)
+            partes.append(f"{e.titulo}, {data} às {hora}")
+        else:
+            partes.append(f"{e.titulo} às {hora}")
 
     lista = ", ".join(partes[:-1]) + f" e {partes[-1]}"
     return f"Você tem {len(eventos)} compromissos: {lista}."
