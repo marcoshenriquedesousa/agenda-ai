@@ -1,8 +1,28 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from core.voice_in import escutar
 from core.voice_out import falar
 from core.llm import interpretar_comando, formatar_agenda_para_fala, formatar_lembretes_para_fala, responder_livremente, corrigir_texto, corrigir_transcricao
 from core import agenda as db
+
+_NOMES_DIAS = {
+    "segunda-feira": 0, "segunda": 0,
+    "terça-feira": 1, "terca-feira": 1, "terça": 1, "terca": 1,
+    "quarta-feira": 2, "quarta": 2,
+    "quinta-feira": 3, "quinta": 3,
+    "sexta-feira": 4, "sexta": 4,
+    "sábado": 5, "sabado": 5,
+    "domingo": 6,
+}
+
+_NOMES_DIAS_FALA = ["segunda-feira", "terça-feira", "quarta-feira",
+                    "quinta-feira", "sexta-feira", "sábado", "domingo"]
+
+
+def _resolver_dia_semana(nome_dia: str) -> datetime:
+    hoje = datetime.now().date()
+    alvo = _NOMES_DIAS[nome_dia.lower().strip()]
+    dias_ate = (alvo - hoje.weekday()) % 7
+    return datetime.combine(hoje + timedelta(days=dias_ate), datetime.min.time())
 
 
 def processar_comando(texto: str) -> str:
@@ -61,6 +81,14 @@ def processar_comando(texto: str) -> str:
             eventos = db.listar_proximos_eventos(limite=10)
             prefixo = "Próximos eventos"
             incluir_data = True
+        elif periodo.lower().strip() in _NOMES_DIAS:
+            dia = _resolver_dia_semana(periodo)
+            inicio = dia
+            fim = dia + timedelta(days=1)
+            eventos = db.listar_eventos_periodo(inicio, fim)
+            nome_dia = _NOMES_DIAS_FALA[dia.weekday()]
+            prefixo = f"Na {nome_dia}, dia {dia.strftime('%d/%m')}"
+            incluir_data = False
         elif len(periodo) == 10 and periodo[4] == "-":
             # data específica no formato YYYY-MM-DD
             try:
@@ -68,8 +96,7 @@ def processar_comando(texto: str) -> str:
                 inicio = dia.replace(hour=0, minute=0, second=0, microsecond=0)
                 fim = inicio + timedelta(days=1)
                 eventos = db.listar_eventos_periodo(inicio, fim)
-                nome_dia = ["segunda-feira", "terça-feira", "quarta-feira",
-                            "quinta-feira", "sexta-feira", "sábado", "domingo"][dia.weekday()]
+                nome_dia = _NOMES_DIAS_FALA[dia.weekday()]
                 prefixo = f"Na {nome_dia}, dia {dia.strftime('%d/%m')}"
                 incluir_data = False
             except ValueError:

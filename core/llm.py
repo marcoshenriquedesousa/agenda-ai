@@ -19,8 +19,8 @@ criar_evento — marcar, anotar, agendar (com data/hora específica):
 {{"acao": "criar_evento", "titulo": "...", "data_hora": "YYYY-MM-DD HH:MM", "descricao": "...", "lembrete_minutos": 15}}
 
 consultar_eventos — o que tenho hoje/amanhã/semana/mês/próximos/dia específico:
-{{"acao": "consultar_eventos", "periodo": "hoje|amanha|semana|mes|proximos|YYYY-MM-DD"}}
-Quando o usuário mencionar um dia da semana ("sexta", "segunda", etc.), use a data exata do calendário acima como valor de periodo (ex: "periodo": "2026-04-24").
+{{"acao": "consultar_eventos", "periodo": "hoje|amanha|semana|mes|proximos|YYYY-MM-DD|nome-do-dia"}}
+Para dias da semana ("sexta", "segunda-feira", etc.), retorne o NOME EXATO do dia em minúsculas sem tentar calcular a data (ex: "periodo": "sexta-feira", "periodo": "segunda-feira").
 
 deletar_evento — excluir, deletar, remover, cancelar evento específico:
 {{"acao": "deletar_evento", "titulo": "..."}}
@@ -50,7 +50,7 @@ nao_entendido — fora do escopo de agenda:
 {{"acao": "nao_entendido", "mensagem": "resposta curta em português"}}
 
 Regras de data:
-- Use SEMPRE as datas do calendário acima para resolver dias da semana ("sexta", "segunda", etc.)
+- Para dias da semana ("sexta", "segunda-feira", etc.): use o NOME DO DIA (ex: "sexta-feira") — NÃO calcule a data
 - "amanhã" = dia seguinte ao hoje
 - Sem data mencionada: use hoje se a hora ainda não passou, senão amanhã
 
