@@ -193,11 +193,8 @@ def corrigir_transcricao(texto: str) -> str:
             ],
         )
         corrigido = resposta["message"]["content"].strip().strip('"').strip("'")
-        if corrigido and corrigido != texto:
-            print(f"[STT-Fix] '{texto}' → '{corrigido}'")
         return corrigido if corrigido else texto
     except Exception as e:
-        print(f"[STT-Fix] Erro na correção: {e}")
         return texto
 
 

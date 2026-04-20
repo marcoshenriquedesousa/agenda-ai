@@ -90,7 +90,6 @@ def _fazer_briefing():
     eventos = listar_eventos_hoje()
     lembretes = listar_lembretes_ativos()
     texto = formatar_briefing_com_lembretes(eventos, lembretes)
-    print(f"[Briefing] {texto}")
     falar(texto)
 
 
@@ -109,7 +108,6 @@ def _agendar_briefing_matinal():
     if segundos < 0:
         segundos += 86400  # amanhã
 
-    print(f"[Briefing] Agendado para {horario} (em {int(segundos)}s)")
     threading.Timer(segundos, _loop_briefing_diario).start()
 
 
