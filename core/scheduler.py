@@ -70,6 +70,54 @@ def _verificar_eventos():
             )
 
 
+def _notificar_lembrete(lembrete_id: int, texto: str):
+    """Dispara notificação visual + TTS para um lembrete recorrente."""
+    from core.voice_out import falar
+    from core.agenda import atualizar_notificacao_lembrete
+
+    mensagem = f"Lembrete: {texto}"
+    print(f"[Scheduler] {mensagem}")
+
+    try:
+        from winotify import Notification, audio
+
+        toast = Notification(
+            app_id="Agenda AI",
+            title="📌 Lembrete",
+            msg=texto,
+            duration="short",
+        )
+        config = get_config()
+        if config["notifications"].get("sound", True):
+            toast.set_audio(audio.Reminder, loop=False)
+        toast.show()
+    except Exception as e:
+        print(f"[Scheduler] Erro na notificação de lembrete: {e}")
+
+    threading.Thread(target=falar, args=(mensagem,), daemon=True).start()
+    atualizar_notificacao_lembrete(lembrete_id)
+
+
+def _verificar_lembretes():
+    """Executado a cada 3 horas — anuncia lembretes ativos que não foram notificados recentemente."""
+    from core.agenda import listar_lembretes_ativos
+    from datetime import timedelta
+
+    lembretes = listar_lembretes_ativos()
+    agora = datetime.now()
+
+    for lembrete in lembretes:
+        # só notifica se nunca foi notificado ou se faz mais de 3h desde a última vez
+        if lembrete.ultima_notificacao is None or (agora - lembrete.ultima_notificacao) >= timedelta(hours=3):
+            _scheduler.add_job(
+                _notificar_lembrete,
+                trigger=DateTrigger(run_date=agora),
+                args=[lembrete.id, lembrete.texto],
+                id=f"lembrete_{lembrete.id}_{int(agora.timestamp())}",
+                replace_existing=False,
+            )
+
+
 def _resetar_notificados():
     """Limpa set de notificados todo dia à meia-noite."""
     _eventos_notificados.clear()
@@ -87,6 +135,9 @@ def iniciar():
 
     # verifica eventos a cada minuto
     _scheduler.add_job(_verificar_eventos, "interval", minutes=1, id="verificar_eventos")
+
+    # anuncia lembretes recorrentes a cada 3 horas
+    _scheduler.add_job(_verificar_lembretes, "interval", hours=3, id="verificar_lembretes")
 
     # reseta notificados à meia-noite
     _scheduler.add_job(_resetar_notificados, "cron", hour=0, minute=0, id="reset_notificados")

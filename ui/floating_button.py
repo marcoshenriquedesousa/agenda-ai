@@ -75,8 +75,9 @@ class DropdownPanel(QFrame):
         layout.addWidget(sep)
 
         for icon, label, handler in [
-            ("💬", "Falar",          self._escutar),
-            ("📅", "Agenda de hoje", self._agenda_hoje),
+            ("💬", "Falar",            self._escutar),
+            ("📅", "Agenda de hoje",   self._agenda_hoje),
+            ("📌", "Meus lembretes",   self._lembretes),
         ]:
             layout.addWidget(self._make_btn(icon, label, handler))
 
@@ -140,6 +141,23 @@ class DropdownPanel(QFrame):
             from core.voice_out import falar
             init_db()
             texto = formatar_briefing_matinal(listar_eventos_hoje())
+
+            set_state("speaking")
+            falar(texto)
+            set_state("idle")
+
+        self._run_bg(_do)
+
+    def _lembretes(self):
+        self._on_action_start()
+
+        def _do():
+            set_state("thinking")
+            from core.agenda import init_db, listar_lembretes_ativos
+            from core.llm import formatar_lembretes_para_fala
+            from core.voice_out import falar
+            init_db()
+            texto = formatar_lembretes_para_fala(listar_lembretes_ativos())
 
             set_state("speaking")
             falar(texto)

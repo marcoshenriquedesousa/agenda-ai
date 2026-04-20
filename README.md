@@ -16,15 +16,18 @@ Assim nasceu esse projeto.
 
 ## Como funciona
 
-O app sobe silenciosamente na bandeja do Windows ao ligar o PC. De manhã ele já fala sua agenda do dia. Durante o dia, você aciona com uma hotkey ou pelo botão flutuante e simplesmente fala:
+O app sobe silenciosamente na bandeja do Windows ao ligar o PC. De manhã ele já fala sua agenda do dia e seus lembretes pendentes. Durante o dia, você aciona com uma hotkey ou pelo botão flutuante e simplesmente fala:
 
 ```
 "Anota reunião com o João amanhã às 14h"
 "O que tenho hoje?"
-"Cancela o dentista de sexta"
+"Muda o dentista para sexta às 10h"
+"Cancela a reunião com o João"
+"Me lembra de pagar o boleto da prefeitura até dia 30"
+"Já paguei o boleto, pode remover"
 ```
 
-Ele entende, confirma em voz e agenda automaticamente. 15 minutos antes de cada evento, uma notificação e a voz avisam — sem que você precise lembrar de checar nada.
+Ele entende, confirma em voz e salva automaticamente. 15 minutos antes de cada evento, uma notificação e a voz avisam. Lembretes recorrentes são anunciados a cada 3 horas enquanto estiverem pendentes — sem que você precise lembrar de checar nada.
 
 ---
 
@@ -33,7 +36,8 @@ Ele entende, confirma em voz e agenda automaticamente. 15 minutos antes de cada 
 ```
 Windows inicia
   └─► Agenda AI sobe no system tray
-        └─► "Bom dia! Você tem 2 compromissos hoje: Reunião às 10h e Dentista às 15h."
+        └─► "Bom dia! Você tem 2 compromissos hoje: Reunião às 10h e Dentista às 15h.
+             Além disso, você tem 1 lembrete pendente: pagar boleto da prefeitura."
 
 Usuário pressiona Ctrl+Alt+A (ou clica no botão flutuante)
   └─► 🎤 Escuta...
@@ -41,8 +45,19 @@ Usuário pressiona Ctrl+Alt+A (ou clica no botão flutuante)
               └─► LLM interpreta → salva no banco
                     └─► "Anotado! Academia às 07:00."
 
+Usuário pede para editar
+  └─► 🎤 "Muda a academia para 6h"
+        └─► "Evento 'Academia' atualizado para hoje às 06:00."
+
+Usuário pede para remover
+  └─► 🎤 "Cancela o dentista de sexta"
+        └─► "Evento removido: Dentista."
+
 15 minutos antes do evento
   └─► 🔔 Notificação Windows + voz: "Lembrete: Reunião em 15 minutos, às 10h."
+
+A cada 3 horas (se houver lembretes ativos)
+  └─► 🔔 Notificação Windows + voz: "Lembrete: pagar boleto da prefeitura."
 ```
 
 ---
@@ -68,7 +83,15 @@ Tudo roda **localmente** — nenhum dado sai do seu computador.
 
 ## Botão flutuante
 
-Um círculo sempre visível no canto da tela com feedback visual em tempo real:
+Um círculo sempre visível no canto da tela. Clique para abrir o menu rápido:
+
+| Opção | Ação |
+|-------|------|
+| 💬 Falar | Abre o microfone para comando de voz |
+| 📅 Agenda de hoje | Lê os compromissos do dia |
+| 📌 Meus lembretes | Lê todos os lembretes pendentes |
+
+Estados visuais em tempo real:
 
 | Estado | Cor | Significado |
 |--------|-----|-------------|
@@ -173,11 +196,29 @@ agenda-ai/
 
 ## Comandos de voz suportados
 
+### Agenda (eventos com data e hora)
+
 | Intenção | Exemplos |
 |----------|---------|
-| Criar evento | "Anota reunião amanhã às 14h" · "Lembra de academia toda segunda às 7h" |
-| Consultar agenda | "O que tenho hoje?" · "Qual minha agenda de amanhã?" |
-| Conversa livre | "Quanto é 49 mais 100?" · "Qual a capital da França?" |
+| Criar | "Anota reunião amanhã às 14h" · "Agenda dentista sexta de manhã" |
+| Consultar | "O que tenho hoje?" · "Qual minha agenda de amanhã?" |
+| Editar | "Muda a reunião com João para sexta às 10h" · "Renomeia o dentista para consulta" |
+| Excluir | "Cancela o dentista" · "Remove a reunião com João" |
+
+### Lembretes (recorrentes, sem horário fixo)
+
+| Intenção | Exemplos |
+|----------|---------|
+| Criar | "Me lembra de pagar o boleto até dia 30" · "Não deixa eu esquecer de ligar pro médico" |
+| Listar | "Quais são meus lembretes?" · "O que preciso lembrar?" |
+| Editar | "Muda o lembrete do boleto para pagar o IPTU" |
+| Remover | "Já paguei o boleto, pode remover" · "Apaga o lembrete do médico" |
+
+### Conversa livre
+
+| Intenção | Exemplos |
+|----------|---------|
+| Perguntas gerais | "Quanto é 49 mais 100?" · "Qual a capital da França?" |
 
 ---
 

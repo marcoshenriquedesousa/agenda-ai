@@ -82,13 +82,14 @@ def _criar_icone(pausado: bool = False) -> Image.Image:
 # ── Briefing matinal ───────────────────────────────────────────────────────
 
 def _fazer_briefing():
-    from core.agenda import init_db, listar_eventos_hoje
-    from core.llm import formatar_briefing_matinal
+    from core.agenda import init_db, listar_eventos_hoje, listar_lembretes_ativos
+    from core.llm import formatar_briefing_com_lembretes
     from core.voice_out import falar
 
     init_db()
     eventos = listar_eventos_hoje()
-    texto = formatar_briefing_matinal(eventos)
+    lembretes = listar_lembretes_ativos()
+    texto = formatar_briefing_com_lembretes(eventos, lembretes)
     print(f"[Briefing] {texto}")
     falar(texto)
 

@@ -11,19 +11,36 @@ SYSTEM_PROMPT = """Você é {nome}, um assistente de agenda pessoal. Hoje é {ho
 
 Responda com um JSON usando um destes formatos:
 
-criar_evento — marcar, anotar, agendar, lembrar:
+criar_evento — marcar, anotar, agendar (com data/hora específica):
 {{"acao": "criar_evento", "titulo": "...", "data_hora": "YYYY-MM-DD HH:MM", "descricao": "...", "lembrete_minutos": 15}}
 
 consultar_eventos — o que tenho hoje/amanhã/semana:
 {{"acao": "consultar_eventos", "periodo": "hoje"}}
 
-cancelar_evento — cancelar, remover, deletar:
-{{"acao": "cancelar_evento", "titulo": "..."}}
+deletar_evento — excluir, deletar, remover, cancelar evento específico:
+{{"acao": "deletar_evento", "titulo": "..."}}
+
+editar_evento — alterar, mudar, reagendar, atualizar evento (informe só os campos que mudam):
+{{"acao": "editar_evento", "titulo_atual": "...", "novo_titulo": "... ou null", "nova_data_hora": "YYYY-MM-DD HH:MM ou null", "nova_descricao": "... ou null"}}
+
+criar_lembrete — me lembre sempre, me avisa, não deixa esquecer, preciso lembrar (sem data/hora fixa):
+{{"acao": "criar_lembrete", "texto": "...", "data_limite": "YYYY-MM-DD ou null"}}
+
+remover_lembrete — já fiz, pode remover lembrete, não precisa mais lembrar, já paguei, já resolvi:
+{{"acao": "remover_lembrete", "texto": "..."}}
+
+editar_lembrete — alterar, mudar, corrigir lembrete existente:
+{{"acao": "editar_lembrete", "texto_atual": "...", "novo_texto": "... ou null", "nova_data_limite": "YYYY-MM-DD ou null"}}
+
+listar_lembretes — quais são meus lembretes, o que preciso lembrar, minhas pendências:
+{{"acao": "listar_lembretes"}}
 
 nao_entendido — fora do escopo de agenda:
 {{"acao": "nao_entendido", "mensagem": "resposta curta em português"}}
 
-Regras: datas relativas → YYYY-MM-DD; sem data → hoje se hora não passou, senão amanhã; "manhã"=09:00, "tarde"=14:00, "noite"=19:00."""
+Regras: datas relativas → YYYY-MM-DD; sem data → hoje se hora não passou, senão amanhã; "manhã"=09:00, "tarde"=14:00, "noite"=19:00.
+Diferença entre criar_evento e criar_lembrete: evento tem data/hora específica (reunião às 14h). Lembrete é recorrente/sem horário fixo (pagar boleto, tomar remédio).
+Para editar/deletar: use titulo_atual/texto_atual para identificar o item — não precisa ser exato, apenas palavras-chave suficientes."""
 
 
 def _montar_prompt() -> str:
@@ -113,6 +130,16 @@ def formatar_agenda_para_fala(eventos: list) -> str:
     return f"Você tem {len(eventos)} compromissos: {lista}."
 
 
+def formatar_lembretes_para_fala(lembretes: list) -> str:
+    if not lembretes:
+        return "Você não tem lembretes pendentes."
+    if len(lembretes) == 1:
+        return f"Você tem um lembrete pendente: {lembretes[0].texto}."
+    textos = [l.texto for l in lembretes]
+    lista = ", ".join(textos[:-1]) + f" e {textos[-1]}"
+    return f"Você tem {len(lembretes)} lembretes pendentes: {lista}."
+
+
 def formatar_briefing_matinal(eventos: list) -> str:
     """Texto do briefing ao iniciar o sistema."""
     agora = datetime.now()
@@ -124,6 +151,14 @@ def formatar_briefing_matinal(eventos: list) -> str:
 
     agenda = formatar_agenda_para_fala(eventos)
     return f"{saudacao}! Aqui é {nome}. {agenda}"
+
+
+def formatar_briefing_com_lembretes(eventos: list, lembretes: list) -> str:
+    base = formatar_briefing_matinal(eventos)
+    if not lembretes:
+        return base
+    lembrete_texto = formatar_lembretes_para_fala(lembretes)
+    return f"{base} Além disso, {lembrete_texto}"
 
 
 if __name__ == "__main__":
